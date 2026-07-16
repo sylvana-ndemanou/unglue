@@ -15,7 +15,7 @@ const INTRO_MS = 900
 const INTRO_SPREAD_MS = 550
 // shimmer: a tilted beam crosses the glyphs, thinning them one density step
 const SWEEP_MS = 1000
-const SWEEP_EVERY_MS = 10_000
+const SWEEP_EVERY_MS = 7_000
 const TILT = 2 // columns of lean per row — beam slants like /
 const HALF = 2.4 // beam half-width
 // full-cell blocks can swap to a lighter shade char; half-blocks (▀ ▄) must
