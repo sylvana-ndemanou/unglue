@@ -34,6 +34,7 @@ automatically.
 ```sh
 $ yoinks https://youtu.be/dQw4w9WgXcQ    # straight to the format picker
 $ yoinks                                 # prompts for a url
+$ yoinks --theme light                   # force the light palette
 ```
 
 yoinks takes over the terminal (full-screen, centered — and restores your
@@ -42,6 +43,12 @@ hit enter. `esc` goes back, `^c` quits. Or just use the mouse — the yoink
 button, the format list and the footer hints are all clickable, and
 clicking the logo takes you back home. Files are saved to `~/Downloads`,
 and the file path is printed to your terminal when you're done.
+
+The default `auto` theme uses your terminal's own foreground and background,
+so it follows light and dark terminal themes without guessing. Press `^t` or
+click the theme control in the footer to cycle through `auto`, `light`, and
+`dark` for the current session. Use `--theme auto`, `--theme light`, or
+`--theme dark` to choose the starting theme for one launch.
 
 <img src="assets/download-options.png" alt="yoinks format picker — resolutions with estimated file sizes, plus audio-only mp3" width="100%">
 

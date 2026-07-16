@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useRef, useState} from 'react'
 import os from 'node:os'
 import path from 'node:path'
 import {Box, Text, useApp, useInput, useStdout} from 'ink'
-import SelectInput from 'ink-select-input'
+import SelectInput, {type IndicatorProps, type ItemProps} from 'ink-select-input'
 import Spinner from 'ink-spinner'
 import {FramedInput} from './components/framed-input.js'
 import {FullScreen} from './components/fullscreen.js'
@@ -16,7 +16,7 @@ import {formatBytes, formatDuration, formatEta, formatSpeed, shortenPath, trunca
 import {addToHistory, loadHistory} from './lib/history.js'
 import {detectPlatform, isProbablyUrl, type Platform} from './lib/platforms.js'
 import {useMouseClick} from './lib/use-mouse-click.js'
-import {theme} from './theme.js'
+import {nextThemeMode, ThemeProvider, type ThemeMode, useTheme} from './theme.js'
 import {
   buildChoices,
   download,
@@ -34,6 +34,24 @@ const DONE_LABEL = '↵ yoink another'
 const TAGLINE = 'yoink any video. paste. yoink. done.'
 
 const choiceLabel = (choice: DownloadChoice) => `${choice.kind === 'audio' ? '♪ ' : '▶ '}${choice.label}`
+
+function ChoiceIndicator({isSelected}: IndicatorProps) {
+  const theme = useTheme()
+  return (
+    <Box marginRight={1}>
+      <Text color={theme.primary}>{isSelected ? '❯' : ' '}</Text>
+    </Box>
+  )
+}
+
+function ChoiceItem({isSelected, label}: ItemProps) {
+  const theme = useTheme()
+  return (
+    <Text color={theme.primary} bold={isSelected}>
+      {label}
+    </Text>
+  )
+}
 
 // explicit blank lines — empty <Box height={1}/> spacers can collapse
 const Gap = ({lines = 1}: {lines?: number}) => (
@@ -105,15 +123,38 @@ const HINTS: Record<Phase['name'], Array<[string, string]>> = {
   ],
 }
 
-export function App({
+type AppProps = {
+  initialUrl?: string
+  clipboardUrl?: string
+  initialThemeMode?: ThemeMode
+  onOutcome: (outcome: Outcome) => void
+}
+
+export function App({initialThemeMode = 'auto', ...props}: AppProps) {
+  const [themeMode, setThemeMode] = useState(initialThemeMode)
+  const cycleTheme = useCallback(() => {
+    setThemeMode(nextThemeMode)
+  }, [])
+
+  return (
+    <ThemeProvider mode={themeMode}>
+      <AppContent {...props} cycleTheme={cycleTheme} />
+    </ThemeProvider>
+  )
+}
+
+function AppContent({
   initialUrl,
   clipboardUrl,
   onOutcome,
+  cycleTheme,
 }: {
   initialUrl?: string
   clipboardUrl?: string
   onOutcome: (outcome: Outcome) => void
+  cycleTheme: () => void
 }) {
+  const theme = useTheme()
   const {exit} = useApp()
   const {stdout} = useStdout()
   const [url, setUrl] = useState(initialUrl ?? '')
@@ -128,8 +169,9 @@ export function App({
   const abortRef = useRef<AbortController | undefined>(undefined)
   const [phase, setPhase] = useState<Phase>(initialUrl ? {name: 'probing', status: 'warming up…'} : {name: 'input'})
 
-  const columns = stdout?.columns ?? 80
-  const boxWidth = Math.min(64, columns - 6)
+  const columns = stdout?.columns && stdout.columns > 0 ? stdout.columns : 80
+  const boxWidth = Math.max(14, Math.min(64, columns - 6))
+  const contentWidth = Math.max(10, Math.min(columns - 4, 78))
 
   const startProbe = useCallback(async (targetUrl: string) => {
     const controller = new AbortController()
@@ -176,7 +218,11 @@ export function App({
   }, [resetToInput, url])
 
   useInput(
-    (_input, key) => {
+    (input, key) => {
+      if (key.ctrl && input === 't') {
+        cycleTheme()
+        return
+      }
       if (key.escape && (phase.name === 'picking' || phase.name === 'error' || phase.name === 'done')) resetToInput()
       if (key.escape && (phase.name === 'probing' || phase.name === 'downloading')) cancelRun()
       if (key.return && (phase.name === 'error' || phase.name === 'done')) resetToInput()
@@ -234,7 +280,7 @@ export function App({
     })()
   }
 
-  let hints = HINTS[phase.name]
+  let hints: Array<[string, string]> = [...HINTS[phase.name], ['^t', `theme:${theme.mode}`]]
   if (phase.name === 'input' && history.length > 0) {
     hints = [hints[0]!, ['↑', 'history'], ...hints.slice(1)]
   }
@@ -244,6 +290,7 @@ export function App({
   // there is no layout math to keep in sync.
   const hintAction = (key: string): (() => void) | undefined => {
     if (key === '^c') return () => exit()
+    if (key === '^t') return cycleTheme
     if (key === 'esc') return phase.name === 'probing' || phase.name === 'downloading' ? cancelRun : resetToInput
     if (key === '↵') {
       if (phase.name === 'input') return () => handleUrlSubmit(urlInput)
@@ -292,7 +339,7 @@ export function App({
       <Logo />
       <Gap />
       <Text color={theme.primary}>{TAGLINE}</Text>
-      <Text color={theme.gray}>youtube · x · instagram · threads · tiktok · +1800 more</Text>
+      <Text color={theme.gray} dimColor={theme.dimSecondary}>youtube · x · instagram · threads · tiktok · +1800 more</Text>
       <Gap />
 
       {phase.name === 'input' && (
@@ -312,11 +359,11 @@ export function App({
             />
           </FramedInput>
           {phase.warning ? (
-            <Text color={theme.gray}>✗ {phase.warning}</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>✗ {phase.warning}</Text>
           ) : clipboardOffered ? (
-            <Text color={theme.gray}>link in your clipboard — ⇥ to paste it</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>link in your clipboard — ⇥ to paste it</Text>
           ) : clipboardAccepted ? (
-            <Text color={theme.gray}>from your clipboard — ↵ to yoink it</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>from your clipboard — ↵ to yoink it</Text>
           ) : null}
         </Box>
       )}
@@ -324,23 +371,23 @@ export function App({
       {phase.name === 'probing' && (
         <Box flexDirection="column" alignItems="center">
           <FramedInput title={platform ? platform.label : 'Paste a link'} width={boxWidth} button={YOINK_BUTTON} buttonDim>
-            <Text color={theme.gray}>{url.length > boxWidth - 8 ? `${url.slice(0, boxWidth - 9)}…` : url}</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>{url.length > boxWidth - 8 ? `${url.slice(0, boxWidth - 9)}…` : url}</Text>
           </FramedInput>
         </Box>
       )}
 
       {phase.name === 'picking' && platform && (
-        <Box width={Math.min(columns - 4, 78)}>
+        <Box width={contentWidth}>
           <Box flexDirection="column" flexGrow={1} flexBasis={0} paddingTop={1} paddingRight={3}>
             {/* wrapped by hand so continuation lines stay flush left —
                 ink's wrapping keeps the break's space as a 1-cell indent */}
-            {wrapText(info?.title ?? '', Math.max(10, Math.min(columns - 4, 78) - 41)).map((line, index) => (
+            {wrapText(info?.title ?? '', Math.max(10, contentWidth - 41)).map((line, index) => (
               <Text key={index} bold color={theme.primary}>
                 {line}
               </Text>
             ))}
             <Gap />
-            <Text color={theme.gray}>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>
               ▸ {platform.label}
               {info?.duration ? ` · ${formatDuration(info.duration)}` : ''}
               {info?.uploader ? ` · ${info.uploader}` : ''}
@@ -348,6 +395,8 @@ export function App({
           </Box>
           <Panel title="Download" width={38}>
             <SelectInput
+              indicatorComponent={ChoiceIndicator}
+              itemComponent={ChoiceItem}
               items={choices.map((choice, index) => ({
                 key: String(index),
                 label: choiceLabel(choice),
@@ -363,7 +412,7 @@ export function App({
       {phase.name === 'downloading' && (
         <Box flexDirection="column" alignItems="center">
           <Gap />
-          <Text color={theme.gray}>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>
             {info?.title ? `${truncate(info.title, 42)} · ` : ''}
             {phase.choice.label}
           </Text>
@@ -377,14 +426,14 @@ export function App({
                 <Text color={theme.primary}>
                   <Spinner type="dots" />
                 </Text>
-                <Text color={theme.gray}> processing…</Text>
+                <Text color={theme.gray} dimColor={theme.dimSecondary}> processing…</Text>
               </Text>
             </>
           ) : phase.progress?.totalBytes ? (
             <>
               <ProgressBar percent={phase.progress.downloadedBytes / phase.progress.totalBytes} />
               <Gap />
-              <Text color={theme.gray}>{downloadMeta(phase.progress)}</Text>
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>{downloadMeta(phase.progress)}</Text>
             </>
           ) : phase.progress ? (
             <>
@@ -392,10 +441,10 @@ export function App({
                 <Text color={theme.primary}>
                   <Spinner type="dots" />
                 </Text>
-                <Text color={theme.gray}> downloading…</Text>
+                <Text color={theme.gray} dimColor={theme.dimSecondary}> downloading…</Text>
               </Text>
               <Gap />
-              <Text color={theme.gray}>{indeterminateMeta(phase.progress)}</Text>
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>{indeterminateMeta(phase.progress)}</Text>
             </>
           ) : (
             <>
@@ -405,7 +454,7 @@ export function App({
                 <Text color={theme.primary}>
                   <Spinner type="dots" />
                 </Text>
-                <Text color={theme.gray}>
+                <Text color={theme.gray} dimColor={theme.dimSecondary}>
                   {phase.refreshing ? ' link expired — grabbing a fresh one…' : ' starting download…'}
                 </Text>
               </Text>
@@ -420,16 +469,22 @@ export function App({
             <Text bold color={theme.primary}>✓ yoinked! </Text>
             <Text color={theme.primary}>find your file in:</Text>
           </Text>
-          <Text color={theme.gray}>{shortenPath(phase.filepath, os.homedir(), 60)}</Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>{shortenPath(phase.filepath, os.homedir(), 60)}</Text>
           <Gap />
-          <Box borderStyle="round" borderColor={theme.gray} paddingX={3}>
+          <Box
+            borderStyle="round"
+            borderColor={theme.gray}
+            borderDimColor={theme.dimSecondary}
+            borderBackgroundColor={theme.background}
+            paddingX={3}
+          >
             <Text bold color={theme.primary}>{DONE_LABEL}</Text>
           </Box>
         </Box>
       )}
 
       {phase.name === 'error' && (
-        <Box flexDirection="column" alignItems="center" width={Math.min(columns - 6, 72)}>
+        <Box flexDirection="column" alignItems="center" width={Math.max(10, Math.min(columns - 6, 72))}>
           <Text bold color={theme.primary}>✗ {phase.message}</Text>
         </Box>
       )}
@@ -445,7 +500,7 @@ export function App({
                   <Text color={theme.primary}>
                     <Spinner type="dots" />
                   </Text>
-                  <Text color={theme.gray}> {phase.status}</Text>
+                  <Text color={theme.gray} dimColor={theme.dimSecondary}> {phase.status}</Text>
                 </Text>
               ) : undefined
             }

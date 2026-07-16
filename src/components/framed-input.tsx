@@ -1,6 +1,6 @@
 import React, {type ReactNode} from 'react'
 import {Box, Text} from 'ink'
-import {theme} from '../theme.js'
+import {useTheme} from '../theme.js'
 
 /** Total columns the button occupies (label + 2 cells padding per side). */
 const frameButtonWidth = (label: string) => label.length + 4
@@ -30,6 +30,7 @@ export function FramedInput({
   buttonDim?: boolean
   children: ReactNode
 }) {
+  const theme = useTheme()
   const inner = width - 2
   const tail = Math.max(0, inner - title.length - 3)
   const buttonW = button ? frameButtonWidth(button) : 0
@@ -38,25 +39,31 @@ export function FramedInput({
     <Box width={width + buttonW}>
       <Box flexDirection="column" width={width}>
         <Text>
-          <Text color={theme.gray}>{'╭─ '}</Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>{'╭─ '}</Text>
           <Text color={theme.primary}>{title}</Text>
-          <Text color={theme.gray}>{` ${'─'.repeat(tail)}${button ? '─' : '╮'}`}</Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>{` ${'─'.repeat(tail)}${button ? '─' : '╮'}`}</Text>
         </Text>
         <Box width={width} height={1} overflow="hidden">
-          <Text color={theme.gray}>│ </Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>│ </Text>
           <Text color={theme.primary}>❯ </Text>
           <Box flexGrow={1} height={1} overflow="hidden">
             {children}
           </Box>
-          {button ? null : <Text color={theme.gray}> │</Text>}
+          {button ? null : <Text color={theme.gray} dimColor={theme.dimSecondary}> │</Text>}
         </Box>
-        <Text color={theme.gray}>{`╰${'─'.repeat(inner)}${button ? '─' : '╯'}`}</Text>
+        <Text color={theme.gray} dimColor={theme.dimSecondary}>{`╰${'─'.repeat(inner)}${button ? '─' : '╯'}`}</Text>
       </Box>
       {button ? (
         <Box flexDirection="column" width={buttonW}>
-          <Text color={fillColor}>{'▄'.repeat(buttonW)}</Text>
-          <Text backgroundColor={fillColor} color={theme.dark} bold>{`  ${button}  `}</Text>
-          <Text color={fillColor}>{'▀'.repeat(buttonW)}</Text>
+          <Text color={fillColor} dimColor={buttonDim && theme.dimSecondary}>{'▄'.repeat(buttonW)}</Text>
+          <Text
+            backgroundColor={theme.inverseButton ? undefined : fillColor}
+            color={theme.inverseButton ? undefined : theme.dark}
+            inverse={theme.inverseButton}
+            dimColor={buttonDim && theme.dimSecondary}
+            bold
+          >{`  ${button}  `}</Text>
+          <Text color={fillColor} dimColor={buttonDim && theme.dimSecondary}>{'▀'.repeat(buttonW)}</Text>
         </Box>
       ) : null}
     </Box>

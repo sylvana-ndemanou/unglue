@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react'
 import {Box, Text} from 'ink'
-import {theme} from '../theme.js'
+import {type Theme, useTheme} from '../theme.js'
 
 const ART = [
   '▓ ▓ █▀█ ▀█▀ █▀▄█ █ █ █▀▀',
@@ -27,14 +27,14 @@ const ease = (t: number) => 1 - Math.pow(1 - t, 3)
 
 type Phase = 'intro' | 'idle' | 'sweep'
 
-function cellAt(ch: string, row: number, col: number, phase: Phase, t: number, delay: number) {
-  if (ch === ' ' || phase === 'idle') return {ch, color: theme.primary}
+function cellAt(ch: string, row: number, col: number, phase: Phase, t: number, delay: number, theme: Theme) {
+  if (ch === ' ' || phase === 'idle') return {ch, color: theme.primary, dim: false}
   if (phase === 'intro') {
     const dt = t - delay
-    if (dt < 0) return {ch: ' ', color: theme.primary}
-    if (dt < 110) return {ch: HALF_BLOCKS.has(ch) ? ch : '░', color: theme.gray}
-    if (dt < 220) return {ch: HALF_BLOCKS.has(ch) ? ch : '▒', color: theme.gray}
-    return {ch, color: theme.primary}
+    if (dt < 0) return {ch: ' ', color: theme.primary, dim: false}
+    if (dt < 110) return {ch: HALF_BLOCKS.has(ch) ? ch : '░', color: theme.gray, dim: theme.dimSecondary}
+    if (dt < 220) return {ch: HALF_BLOCKS.has(ch) ? ch : '▒', color: theme.gray, dim: theme.dimSecondary}
+    return {ch, color: theme.primary, dim: false}
   }
   // sweep — beam position leans right as it climbs, only glyphs are touched
   const cols = GRID[0].length
@@ -43,29 +43,30 @@ function cellAt(ch: string, row: number, col: number, phase: Phase, t: number, d
   const p = pMin + ease(t / SWEEP_MS) * (pMax - pMin)
   const d = Math.abs(col - (ROWS - 1 - row) * TILT - p)
   if (d <= HALF && 1 - d / HALF > 0.35) {
-    if (HALF_BLOCKS.has(ch)) return {ch, color: theme.gray}
-    return {ch: LIGHTER[ch] ?? ch, color: theme.primary}
+    if (HALF_BLOCKS.has(ch)) return {ch, color: theme.gray, dim: theme.dimSecondary}
+    return {ch: LIGHTER[ch] ?? ch, color: theme.primary, dim: false}
   }
-  return {ch, color: theme.primary}
+  return {ch, color: theme.primary, dim: false}
 }
 
-function renderRow(row: number, phase: Phase, t: number, delays: number[]) {
+function renderRow(row: number, phase: Phase, t: number, delays: number[], theme: Theme) {
   // group consecutive same-color cells so each row is a few Text spans, not 24
-  const segments: Array<{text: string; color: string}> = []
+  const segments: Array<{text: string; color?: string; dim: boolean}> = []
   GRID[row].forEach((ch, col) => {
-    const cell = cellAt(ch, row, col, phase, t, delays[col])
+    const cell = cellAt(ch, row, col, phase, t, delays[col], theme)
     const last = segments[segments.length - 1]
-    if (last && (last.color === cell.color || cell.ch === ' ')) last.text += cell.ch
-    else segments.push({text: cell.ch, color: cell.color})
+    if (last && ((last.color === cell.color && last.dim === cell.dim) || cell.ch === ' ')) last.text += cell.ch
+    else segments.push({text: cell.ch, color: cell.color, dim: cell.dim})
   })
   return segments.map((seg, i) => (
-    <Text key={i} color={seg.color}>
+    <Text key={i} color={seg.color} dimColor={seg.dim}>
       {seg.text}
     </Text>
   ))
 }
 
 export function Logo() {
+  const theme = useTheme()
   const animated = Boolean(process.stdout.isTTY)
   const delays = useMemo(
     () => GRID.map(row => row.map(() => Math.random() * INTRO_SPREAD_MS)),
@@ -100,7 +101,7 @@ export function Logo() {
   return (
     <Box flexDirection="column">
       {GRID.map((_, row) => (
-        <Text key={row}>{renderRow(row, phase, t, delays[row])}</Text>
+        <Text key={row}>{renderRow(row, phase, t, delays[row], theme)}</Text>
       ))}
     </Box>
   )

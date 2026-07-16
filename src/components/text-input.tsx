@@ -1,7 +1,7 @@
 import React, {useRef, useState} from 'react'
 import {Text, useInput} from 'ink'
 import {stripMouseReports} from '../lib/use-mouse-click.js'
-import {theme} from '../theme.js'
+import {useTheme} from '../theme.js'
 
 type Props = {
   value: string
@@ -48,6 +48,7 @@ export function TextInput({
   submitOnPaste,
   onTab,
 }: Props) {
+  const theme = useTheme()
   const [cursorState, setCursorState] = useState(value.length)
   const [anchorState, setAnchorState] = useState<number | null>(null)
   const [historyPos, setHistoryPos] = useState<number | null>(null)
@@ -178,7 +179,7 @@ export function TextInput({
     return (
       <Text>
         <Text inverse> </Text>
-        <Text color={theme.gray}>{placeholder.slice(0, span - 1)}</Text>
+        <Text color={theme.gray} dimColor={theme.dimSecondary}>{placeholder.slice(0, span - 1)}</Text>
       </Text>
     )
   }

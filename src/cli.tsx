@@ -3,6 +3,7 @@ import {createRequire} from 'node:module'
 import {render} from 'ink'
 import {App, type Outcome} from './app.js'
 import {captureFrames} from './lib/click-map.js'
+import {parseArgs} from './lib/args.js'
 import {readClipboard} from './lib/clipboard.js'
 import {isProbablyUrl} from './lib/platforms.js'
 
@@ -22,6 +23,7 @@ const HELP = `
     $ yoinks                 (prompts for a url)
 
   Options
+    --theme <mode>  use auto, light, or dark for this run
     -h, --help      show this help
     -v, --version   show version
 
@@ -29,19 +31,25 @@ const HELP = `
   Powered by yt-dlp — YouTube, X, Instagram, Threads, TikTok & 1800+ sites.
 `
 
-const args = process.argv.slice(2)
+const args = parseArgs(process.argv.slice(2))
 
-if (args.includes('-h') || args.includes('--help')) {
+if (args.error) {
+  console.error(`yoinks: ${args.error}\nTry “yoinks --help” for usage.`)
+  process.exit(1)
+}
+
+if (args.help) {
   console.log(HELP)
   process.exit(0)
 }
 
-if (args.includes('-v') || args.includes('--version')) {
+if (args.version) {
   console.log(VERSION)
   process.exit(0)
 }
 
-const initialUrl = args.find(arg => !arg.startsWith('-'))
+const initialUrl = args.initialUrl
+const initialThemeMode = args.themeMode ?? 'auto'
 
 const isTTY = Boolean(process.stdout.isTTY)
 
@@ -73,7 +81,12 @@ if (isTTY) {
 
 let outcome: Outcome = {}
 const {waitUntilExit} = render(
-  <App initialUrl={initialUrl} clipboardUrl={clipboardUrl} onOutcome={result => (outcome = result)} />,
+  <App
+    initialUrl={initialUrl}
+    clipboardUrl={clipboardUrl}
+    initialThemeMode={initialThemeMode}
+    onOutcome={result => (outcome = result)}
+  />,
   // keep a copy of every frame so clicks can be hit-tested against it
   {stdout: captureFrames(process.stdout)},
 )

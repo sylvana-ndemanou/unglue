@@ -1,16 +1,19 @@
 import React, {useEffect, useState, type ReactNode} from 'react'
 import {Box, useStdout} from 'ink'
+import {useTheme} from '../theme.js'
 
 export function FullScreen({children}: {children: ReactNode}) {
+  const theme = useTheme()
   const {stdout} = useStdout()
-  const [size, setSize] = useState({
-    columns: stdout?.columns ?? 80,
-    rows: stdout?.rows ?? 24,
+  const dimensions = () => ({
+    columns: stdout?.columns && stdout.columns > 0 ? stdout.columns : 80,
+    rows: stdout?.rows && stdout.rows > 1 ? stdout.rows : 24,
   })
+  const [size, setSize] = useState(dimensions)
 
   useEffect(() => {
     if (!stdout) return
-    const onResize = () => setSize({columns: stdout.columns, rows: stdout.rows})
+    const onResize = () => setSize(dimensions())
     stdout.on('resize', onResize)
     return () => {
       stdout.off('resize', onResize)
@@ -24,6 +27,7 @@ export function FullScreen({children}: {children: ReactNode}) {
       flexDirection="column"
       alignItems="center"
       justifyContent="center"
+      backgroundColor={theme.background}
     >
       {children}
     </Box>
