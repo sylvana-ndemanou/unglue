@@ -4,7 +4,7 @@ import path from 'node:path'
 import {Box, Text, useApp, useInput, useStdout} from 'ink'
 import SelectInput from 'ink-select-input'
 import Spinner from 'ink-spinner'
-import {FramedInput} from './components/framed-input.js'
+import {FramedInput, frameButtonWidth} from './components/framed-input.js'
 import {FullScreen} from './components/fullscreen.js'
 import {Logo} from './components/logo.js'
 import {Panel} from './components/panel.js'
@@ -14,6 +14,7 @@ import {TextInput} from './components/text-input.js'
 import {formatBytes, formatDuration, formatEta, formatSpeed, shortenPath, truncate} from './lib/format.js'
 import {addToHistory, loadHistory} from './lib/history.js'
 import {detectPlatform, isProbablyUrl, type Platform} from './lib/platforms.js'
+import {useMouseClick} from './lib/use-mouse-click.js'
 import {theme} from './theme.js'
 import {
   buildChoices,
@@ -27,6 +28,7 @@ import {
 } from './lib/ytdlp.js'
 
 const OUT_DIR = path.join(os.homedir(), 'Downloads')
+const YOINK_BUTTON = 'yoink'
 
 // explicit blank lines — empty <Box height={1}/> spacers can collapse
 const Gap = ({lines = 1}: {lines?: number}) => (
@@ -154,6 +156,29 @@ export function App({
     void startProbe(trimmed)
   }
 
+  // Hit-test clicks against the yoink button. Ink has no absolute-position
+  // API, so the button's cell rectangle is re-derived from the input-phase
+  // layout below — keep both in sync: FullScreen centers a column of
+  // logo(3) + gap(1) + tagline(1) + subtitle(1) + gap(1) = 7 rows above the
+  // 3-row frame, then warning/clipboard-note?(1) + gap(2) + shortcuts(1)
+  // below it.
+  const rows = stdout?.rows ?? 24
+  const buttonW = frameButtonWidth(YOINK_BUTTON)
+  const noteRow =
+    phase.name === 'input' && (phase.warning || (clipboardUrl && urlInput === clipboardUrl)) ? 1 : 0
+  const contentHeight = 7 + 3 + noteRow + 2 + 1
+  const frameTop = Math.floor((rows - 1 - contentHeight) / 2) + 7 + 1
+  const buttonLeft = Math.floor((columns - (boxWidth + buttonW)) / 2) + boxWidth + 1
+  useMouseClick(
+    (x, y) => {
+      // ±1 cell of slack — centering can round differently than we do
+      if (y >= frameTop - 1 && y <= frameTop + 3 && x >= buttonLeft - 1 && x <= buttonLeft + buttonW) {
+        handleUrlSubmit(urlInput)
+      }
+    },
+    phase.name === 'input' && Boolean(process.stdin.isTTY),
+  )
+
   const handlePick = (item: {value: number}) => {
     const choice = choices[item.value]
     setPhase({name: 'downloading', choice, processing: false})
@@ -200,7 +225,7 @@ export function App({
 
       {phase.name === 'input' && (
         <Box flexDirection="column" alignItems="center">
-          <FramedInput title="Paste a link" width={boxWidth}>
+          <FramedInput title="Paste a link" width={boxWidth} button={YOINK_BUTTON}>
             <TextInput
               value={urlInput}
               onChange={setUrlInput}
@@ -221,16 +246,9 @@ export function App({
 
       {phase.name === 'probing' && (
         <Box flexDirection="column" alignItems="center">
-          <FramedInput title={platform ? platform.label : 'Paste a link'} width={boxWidth}>
+          <FramedInput title={platform ? platform.label : 'Paste a link'} width={boxWidth} button={YOINK_BUTTON} buttonDim>
             <Text color={theme.gray}>{url.length > boxWidth - 8 ? `${url.slice(0, boxWidth - 9)}…` : url}</Text>
           </FramedInput>
-          <Gap />
-          <Text>
-            <Text color={theme.primary}>
-              <Spinner type="dots" />
-            </Text>
-            <Text color={theme.gray}> {phase.status}</Text>
-          </Text>
         </Box>
       )}
 
@@ -329,7 +347,19 @@ export function App({
       {hints.length > 0 ? (
         <>
           <Gap lines={2} />
-          <Shortcuts items={hints} />
+          <Shortcuts
+            items={hints}
+            leading={
+              phase.name === 'probing' ? (
+                <Text>
+                  <Text color={theme.primary}>
+                    <Spinner type="dots" />
+                  </Text>
+                  <Text color={theme.gray}> {phase.status}</Text>
+                </Text>
+              ) : undefined
+            }
+          />
         </>
       ) : null}
     </FullScreen>

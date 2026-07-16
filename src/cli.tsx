@@ -49,7 +49,8 @@ if (!initialUrl && isTTY) {
   if (clipped && !/\s/.test(clipped) && isProbablyUrl(clipped)) clipboardUrl = clipped
 }
 const enterAltScreen = () => process.stdout.write('\x1b[?1049h\x1b[H')
-const leaveAltScreen = () => process.stdout.write('\x1b[?1049l')
+// also switch mouse tracking off — a crash can skip React effect cleanup
+const leaveAltScreen = () => process.stdout.write('\x1b[?1006l\x1b[?1000l\x1b[?1049l')
 
 if (isTTY) {
   enterAltScreen()

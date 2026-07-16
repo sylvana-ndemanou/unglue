@@ -4,4 +4,7 @@ export const theme = {
   // bold/plain combinations, not extra shades.
   primary: '#ffffff',
   gray: '#a1a1aa',
+  // the one exception: label on top of the filled yoink button, where
+  // white-on-white can't work
+  dark: '#18181b',
 }

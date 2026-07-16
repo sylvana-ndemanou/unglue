@@ -1,10 +1,17 @@
-import React from 'react'
+import React, {type ReactNode} from 'react'
 import {Text} from 'ink'
 import {theme} from '../theme.js'
 
-export function Shortcuts({items}: {items: Array<[key: string, label: string]>}) {
+/** `leading` renders before the shortcut items, joined by the same `·`. */
+export function Shortcuts({items, leading}: {items: Array<[key: string, label: string]>; leading?: ReactNode}) {
   return (
     <Text>
+      {leading ? (
+        <>
+          {leading}
+          <Text color={theme.gray}>{'  ·  '}</Text>
+        </>
+      ) : null}
       {items.map(([key, label], index) => (
         <Text key={`${key}-${label}`}>
           {index > 0 ? <Text color={theme.gray}>{'  ·  '}</Text> : null}
