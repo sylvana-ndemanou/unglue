@@ -27,10 +27,12 @@ import {
   type DownloadProgress,
   type VideoInfo,
 } from './lib/ytdlp.js'
+import {ensureUngluePython, unglueTrack, type UnglueResult} from './lib/unglue.js'
 
 const OUT_DIR = path.join(os.homedir(), 'Downloads')
 const YOINK_BUTTON = 'yoink'
 const DONE_LABEL = '↵ yoink another'
+const UNGLUE_LABEL = '♪ u unglue vocals'
 const TAGLINE = 'yoink any video. paste. yoink. done.'
 
 const choiceLabel = (choice: DownloadChoice) => `${choice.kind === 'audio' ? '♪ ' : '▶ '}${choice.label}`
@@ -97,6 +99,10 @@ type Phase =
       refreshing?: boolean
     }
   | {name: 'done'; filepath: string}
+  | {name: 'unglue-checking'; filepath: string}
+  | {name: 'unglueing'; filepath: string; lines: string[]}
+  | {name: 'unglue-done'; result: UnglueResult}
+  | {name: 'unglue-error'; filepath: string; message: string}
   | {name: 'error'; message: string}
 
 const HINTS: Record<Phase['name'], Array<[string, string]>> = {
@@ -118,7 +124,20 @@ const HINTS: Record<Phase['name'], Array<[string, string]>> = {
     ['esc', 'cancel'],
     ['^c', 'quit'],
   ],
-  done: [['^c', 'quit']],
+  done: [
+    ['u', 'unglue vocals'],
+    ['^c', 'quit'],
+  ],
+  'unglue-checking': [['^c', 'quit']],
+  unglueing: [
+    ['esc', 'cancel'],
+    ['^c', 'quit'],
+  ],
+  'unglue-done': [['^c', 'quit']],
+  'unglue-error': [
+    ['↵', 'back'],
+    ['^c', 'quit'],
+  ],
   error: [
     ['↵', 'try again'],
     ['^c', 'quit'],
@@ -225,9 +244,15 @@ function AppContent({
         cycleTheme()
         return
       }
+      if (input === 'u' && phase.name === 'done') {
+        void handleUnglue(phase.filepath)
+        return
+      }
       if (key.escape && (phase.name === 'picking' || phase.name === 'error' || phase.name === 'done')) resetToInput()
       if (key.escape && (phase.name === 'probing' || phase.name === 'downloading')) cancelRun()
+      if (key.escape && phase.name === 'unglueing') cancelRun()
       if (key.return && (phase.name === 'error' || phase.name === 'done')) resetToInput()
+      if (key.return && phase.name === 'unglue-error') setPhase({name: 'done', filepath: phase.filepath})
     },
     {isActive: Boolean(process.stdin.isTTY)},
   )
@@ -244,6 +269,33 @@ function AppContent({
 
   const clipboardOffered = Boolean(clipboardUrl) && urlInput === ''
   const clipboardAccepted = Boolean(clipboardUrl) && urlInput === clipboardUrl
+
+  const handleUnglue = async (filepath: string) => {
+    const controller = new AbortController()
+    abortRef.current = controller
+    setPhase({name: 'unglue-checking', filepath})
+    try {
+      const python = await ensureUngluePython()
+      if (controller.signal.aborted) return
+      setPhase({name: 'unglueing', filepath, lines: []})
+      const result = await unglueTrack(
+        python,
+        {inputPath: filepath, outDir: path.dirname(filepath)},
+        {
+          onLine: line =>
+            setPhase(prev =>
+              prev.name === 'unglueing' ? {...prev, lines: [...prev.lines.slice(-4), line]} : prev,
+            ),
+        },
+        controller.signal,
+      )
+      if (controller.signal.aborted) return
+      setPhase({name: 'unglue-done', result})
+    } catch (error) {
+      if (controller.signal.aborted) return
+      setPhase({name: 'unglue-error', filepath, message: error instanceof Error ? error.message : String(error)})
+    }
+  }
 
   const handlePick = (item: {value: number}) => {
     const choice = choices[item.value]
@@ -293,11 +345,16 @@ function AppContent({
   const hintAction = (key: string): (() => void) | undefined => {
     if (key === '^c') return () => exit()
     if (key === '^t') return cycleTheme
-    if (key === 'esc') return phase.name === 'probing' || phase.name === 'downloading' ? cancelRun : resetToInput
+    if (key === 'esc') {
+      if (phase.name === 'probing' || phase.name === 'downloading' || phase.name === 'unglueing') return cancelRun
+      return resetToInput
+    }
+    if (key === 'u' && phase.name === 'done') return () => void handleUnglue(phase.filepath)
     if (key === '↵') {
       if (phase.name === 'input') return () => handleUrlSubmit(urlInput)
       if (phase.name === 'picking') return () => handlePick({value: highlightRef.current})
       if (phase.name === 'error' || phase.name === 'done') return resetToInput
+      if (phase.name === 'unglue-error') return () => setPhase({name: 'done', filepath: phase.filepath})
     }
     return undefined // ↑↓ / ↑ stay keyboard-only
   }
@@ -313,6 +370,7 @@ function AppContent({
   }
   if (phase.name === 'done') {
     clickTargets.push({match: DONE_LABEL, padX: 4, padY: 1, action: resetToInput})
+    clickTargets.push({match: UNGLUE_LABEL, padX: 4, padY: 1, action: () => void handleUnglue(phase.filepath)})
   }
   for (const [key, label] of hints) {
     const action = hintAction(key)
@@ -472,6 +530,68 @@ function AppContent({
           </Text>
           <Text color={theme.gray} dimColor={theme.dimSecondary}>{shortenPath(phase.filepath, os.homedir(), 60)}</Text>
           <Gap />
+          <Box flexDirection="row">
+            <Box
+              borderStyle="round"
+              borderColor={theme.gray}
+              borderDimColor={theme.dimSecondary}
+              borderBackgroundColor={theme.background}
+              paddingX={3}
+              marginRight={2}
+            >
+              <Text bold color={theme.primary}>{DONE_LABEL}</Text>
+            </Box>
+            <Box
+              borderStyle="round"
+              borderColor={theme.gray}
+              borderDimColor={theme.dimSecondary}
+              borderBackgroundColor={theme.background}
+              paddingX={3}
+            >
+              <Text bold color={theme.primary}>{UNGLUE_LABEL}</Text>
+            </Box>
+          </Box>
+        </Box>
+      )}
+
+      {phase.name === 'unglue-checking' && (
+        <Box flexDirection="column" alignItems="center">
+          <Text>
+            <Text color={theme.primary}>
+              <Spinner type="dots" />
+            </Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}> checking for demucs…</Text>
+          </Text>
+        </Box>
+      )}
+
+      {phase.name === 'unglueing' && (
+        <Box flexDirection="column" alignItems="center" width={Math.max(10, Math.min(columns - 6, 72))}>
+          <Text>
+            <Text color={theme.primary}>
+              <Spinner type="dots" />
+            </Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}> unglueing vocals from instrumental…</Text>
+          </Text>
+          <Gap />
+          {phase.lines.map((line, index) => (
+            <Text key={index} color={theme.gray} dimColor>
+              {truncate(line, columns - 10)}
+            </Text>
+          ))}
+        </Box>
+      )}
+
+      {phase.name === 'unglue-done' && (
+        <Box flexDirection="column" alignItems="center">
+          <Text bold color={theme.primary}>✓ unglued!</Text>
+          <Gap />
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>vocals: {shortenPath(phase.result.vocalsPath, os.homedir(), 60)}</Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>instrumental: {shortenPath(phase.result.instrumentalPath, os.homedir(), 60)}</Text>
+          {phase.result.videoPath ? (
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>video: {shortenPath(phase.result.videoPath, os.homedir(), 60)}</Text>
+          ) : null}
+          <Gap />
           <Box
             borderStyle="round"
             borderColor={theme.gray}
@@ -481,6 +601,12 @@ function AppContent({
           >
             <Text bold color={theme.primary}>{DONE_LABEL}</Text>
           </Box>
+        </Box>
+      )}
+
+      {phase.name === 'unglue-error' && (
+        <Box flexDirection="column" alignItems="center" width={Math.max(10, Math.min(columns - 6, 72))}>
+          <Text bold color={theme.primary}>✗ {phase.message}</Text>
         </Box>
       )}
 
