@@ -1,0 +1,2 @@
+# Pulls in torch/torchaudio as dependencies — first install is a large download (1-2GB+).
+demucs>=4.0.1
