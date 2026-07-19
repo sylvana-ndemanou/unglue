@@ -1,4 +1,6 @@
-# yoinks
+# yoinks / unglue
+
+> Based on [yoinks](https://github.com/pablostanley/yoinks) by Pablo Stanley, extended with `unglue` (vocal/instrumental separation via Demucs).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
