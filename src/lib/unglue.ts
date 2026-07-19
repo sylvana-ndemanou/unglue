@@ -1,11 +1,25 @@
 import {spawn} from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 
-// tools/unglue/unglue.py, resolved relative to this file so it works whether
-// this runs from src/ (ts-node/dev) or dist/ (built) — both sit one level
-// under the repo root.
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+// tsup bundles everything into a single dist/cli.js, so this module's own
+// path doesn't sit a fixed number of folders under the repo root depending
+// on whether we're running from src/ (dev) or dist/ (built) — walk upward
+// until we find tools/unglue/unglue.py instead of assuming a fixed depth.
+function findRepoRoot(): string {
+  let dir = path.dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 6; i++) {
+    if (fs.existsSync(path.join(dir, 'tools', 'unglue', 'unglue.py'))) return dir
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  // fall back to the old assumption if the walk-up somehow fails
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+}
+
+const REPO_ROOT = findRepoRoot()
 const UNGLUE_SCRIPT = path.join(REPO_ROOT, 'tools', 'unglue', 'unglue.py')
 const UNGLUE_VENV_PYTHON = path.join(REPO_ROOT, 'tools', 'unglue', '.venv', 'bin', 'python3')
 

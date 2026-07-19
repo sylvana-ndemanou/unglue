@@ -2,13 +2,19 @@ import React, {useEffect, useMemo, useState} from 'react'
 import {Box, Text} from 'ink'
 import {type Theme, useTheme} from '../theme.js'
 
-const ART = [
+const ART_YOINKS = [
   '▓ ▓ █▀█ ▀█▀ █▀▄█ █ █ █▀▀',
   '▀█▀ █ ▓  ▓  █  ▓ ▓▀▄ ▀▀▓',
   ' ▀  ▀▀▀ ▀▀▀ ▀  ▀ ▀ ▀ ▀▀▀',
 ]
-const GRID = ART.map(line => [...line])
-const ROWS = GRID.length
+// hand-drawn 5x6 block font per letter, joined with a 1-col gap — same
+// half-block encoding technique as the yoinks wordmark above, just a
+// literal bitmap rather than an abstracted glyph set.
+const ART_UNGLUE = [
+  '█   █ █▄  █ ▄▀▀▀  █     █   █ █▀▀▀▀',
+  '█   █ █ ▀▄█ █ ▀▀█ █     █   █ █▀▀▀ ',
+  '▀▄▄▄▀ █   █ ▀▄▄▄▀ █▄▄▄▄ ▀▄▄▄▀ █▄▄▄▄',
+]
 
 // intro: each glyph flickers in as ░, sharpens to ▒, then resolves
 const INTRO_MS = 900
@@ -27,7 +33,17 @@ const ease = (t: number) => 1 - Math.pow(1 - t, 3)
 
 type Phase = 'intro' | 'idle' | 'sweep'
 
-function cellAt(ch: string, row: number, col: number, phase: Phase, t: number, delay: number, theme: Theme) {
+function cellAt(
+  ch: string,
+  row: number,
+  col: number,
+  phase: Phase,
+  t: number,
+  delay: number,
+  theme: Theme,
+  grid: string[][],
+  rows: number,
+) {
   if (ch === ' ' || phase === 'idle') return {ch, color: theme.primary, dim: false}
   if (phase === 'intro') {
     const dt = t - delay
@@ -37,11 +53,11 @@ function cellAt(ch: string, row: number, col: number, phase: Phase, t: number, d
     return {ch, color: theme.primary, dim: false}
   }
   // sweep — beam position leans right as it climbs, only glyphs are touched
-  const cols = GRID[0].length
-  const pMin = -TILT * ROWS - HALF
+  const cols = grid[0]!.length
+  const pMin = -TILT * rows - HALF
   const pMax = cols + HALF
   const p = pMin + ease(t / SWEEP_MS) * (pMax - pMin)
-  const d = Math.abs(col - (ROWS - 1 - row) * TILT - p)
+  const d = Math.abs(col - (rows - 1 - row) * TILT - p)
   if (d <= HALF && 1 - d / HALF > 0.35) {
     if (HALF_BLOCKS.has(ch)) return {ch, color: theme.gray, dim: theme.dimSecondary}
     return {ch: LIGHTER[ch] ?? ch, color: theme.primary, dim: false}
@@ -49,11 +65,19 @@ function cellAt(ch: string, row: number, col: number, phase: Phase, t: number, d
   return {ch, color: theme.primary, dim: false}
 }
 
-function renderRow(row: number, phase: Phase, t: number, delays: number[], theme: Theme) {
+function renderRow(
+  row: number,
+  phase: Phase,
+  t: number,
+  delays: number[],
+  theme: Theme,
+  grid: string[][],
+  rows: number,
+) {
   // group consecutive same-color cells so each row is a few Text spans, not 24
   const segments: Array<{text: string; color?: string; dim: boolean}> = []
-  GRID[row].forEach((ch, col) => {
-    const cell = cellAt(ch, row, col, phase, t, delays[col], theme)
+  grid[row]!.forEach((ch, col) => {
+    const cell = cellAt(ch, row, col, phase, t, delays[col]!, theme, grid, rows)
     const last = segments[segments.length - 1]
     if (last && ((last.color === cell.color && last.dim === cell.dim) || cell.ch === ' ')) last.text += cell.ch
     else segments.push({text: cell.ch, color: cell.color, dim: cell.dim})
@@ -65,15 +89,24 @@ function renderRow(row: number, phase: Phase, t: number, delays: number[], theme
   ))
 }
 
-export function Logo() {
+export function Logo({variant = 'yoinks'}: {variant?: 'yoinks' | 'unglue'}) {
   const theme = useTheme()
   const animated = Boolean(process.stdout.isTTY)
+  const grid = useMemo(() => (variant === 'unglue' ? ART_UNGLUE : ART_YOINKS).map(line => [...line]), [variant])
+  const rows = grid.length
   const delays = useMemo(
-    () => GRID.map(row => row.map(() => Math.random() * INTRO_SPREAD_MS)),
-    [],
+    () => grid.map(row => row.map(() => Math.random() * INTRO_SPREAD_MS)),
+    [grid],
   )
   const [phase, setPhase] = useState<Phase>(animated ? 'intro' : 'idle')
   const [t, setT] = useState(0)
+
+  // switching art (e.g. yoinks -> unglue) replays the intro rather than
+  // showing a stale sweep mid-flight against the new glyph set
+  useEffect(() => {
+    setT(0)
+    setPhase(animated ? 'intro' : 'idle')
+  }, [variant, animated])
 
   useEffect(() => {
     if (!animated) return
@@ -99,11 +132,11 @@ export function Logo() {
   }, [phase, animated])
 
   return (
-    // flexShrink=0 — the logo must keep its 3 rows even when a phase's
+    // flexShrink=0 — the logo must keep its rows even when a phase's
     // content would overflow the screen, or yoga crushes it first
     <Box flexDirection="column" flexShrink={0}>
-      {GRID.map((_, row) => (
-        <Text key={row}>{renderRow(row, phase, t, delays[row], theme)}</Text>
+      {grid.map((_, row) => (
+        <Text key={row}>{renderRow(row, phase, t, delays[row]!, theme, grid, rows)}</Text>
       ))}
     </Box>
   )

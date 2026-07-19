@@ -396,7 +396,7 @@ function AppContent({
 
   return (
     <FullScreen>
-      <Logo />
+      <Logo variant={phase.name === 'unglue-checking' || phase.name === 'unglueing' || phase.name === 'unglue-done' || phase.name === 'unglue-error' ? 'unglue' : 'yoinks'} />
       <Gap />
       <Text color={theme.primary}>{TAGLINE}</Text>
       <Text color={theme.gray} dimColor={theme.dimSecondary}>youtube · x · instagram · threads · tiktok · +1800 more</Text>
