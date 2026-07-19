@@ -1,4 +1,4 @@
-# yoinks split — vocal / instrumental separation
+# unglue — vocal / instrumental separation
 
 Standalone companion tool for yoinks. Splits an audio or video file into a
 vocals track and an instrumental track using [Demucs](https://github.com/facebookresearch/demucs)
@@ -12,7 +12,7 @@ it's meant to work standalone today, and get wired into the yoinks picker later
 ## Setup
 
 ```bash
-cd tools/split
+cd tools/unglue
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt  # first install downloads torch — 1-2GB+, be patient
@@ -25,20 +25,20 @@ so if yoinks works, you already have it).
 
 ```bash
 # audio in, mp3 vocals + mp3 instrumental out
-python3 split.py song.mp3
+python3 unglue.py song.mp3
 
 # video in — extracts audio, splits it, AND rebuilds the video with the
 # instrumental as its soundtrack
-python3 split.py clip.mp4 --remux
+python3 unglue.py clip.mp4 --remux
 
 # keep lossless wav instead of mp3
-python3 split.py song.mp3 --format wav
+python3 unglue.py song.mp3 --format wav
 
 # slower but cleaner model (skip for quick jobs)
-python3 split.py song.mp3 --model htdemucs_ft
+python3 unglue.py song.mp3 --model htdemucs_ft
 
 # force CPU if auto-detection picks the wrong device
-python3 split.py song.mp3 --device cpu
+python3 unglue.py song.mp3 --device cpu
 ```
 
 Output goes to `-o/--output` (default: current directory) as:
@@ -58,8 +58,8 @@ Output goes to `-o/--output` (default: current directory) as:
 ## Next step: wiring into yoinks
 
 The plan (per your "les deux à terme") is to make this a picker option in
-yoinks itself — after downloading an audio-only or video file, offer "split
-vocals/instrumental?" before yoinks exits. `src/lib/split.ts` in this repo is
+yoinks itself — after downloading an audio-only or video file, offer "unglue
+vocals/instrumental?" before yoinks exits. `src/lib/unglue.ts` in this repo is
 a first pass at the Node-side wrapper that would call this script as a
 subprocess; it isn't wired into `app.tsx`'s interactive picker yet. That's a
 UI task (new picker step + progress display) — happy to do it once the

@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-split.py — vocal / instrumental separation for yoinks.
+unglue — pull the vocals off a track, terminal-side.
 
 Wraps Demucs (Meta AI Research, htdemucs model) to split an audio or video
-file into a vocals track and an instrumental track.
+file into a vocals track and an instrumental track. yoinks' companion tool
+for stem separation.
 
 Usage:
-    python3 split.py song.mp3
-    python3 split.py video.mp4 --remux            # also rebuild a video with the instrumental as its audio track
-    python3 split.py song.wav --model htdemucs_ft  # slower, slightly cleaner separation
-    python3 split.py song.mp3 --format wav         # keep lossless output instead of mp3
+    python3 unglue.py song.mp3
+    python3 unglue.py video.mp4 --remux            # also rebuild a video with the instrumental as its audio track
+    python3 unglue.py song.wav --model htdemucs_ft  # slower, slightly cleaner separation
+    python3 unglue.py song.mp3 --format wav         # keep lossless output instead of mp3
 
 Requires:
     pip install -U demucs
@@ -29,6 +30,20 @@ import tempfile
 from pathlib import Path
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+BANNER = (
+    "  █   █ █   █  ███  █     █   █ █████\n"
+    "  █   █ ██  █ █     █     █   █ █    \n"
+    "  █   █ █ █ █ █  ██ █     █   █ ████ \n"
+    "  █   █ █  ██ █   █ █     █   █ █    \n"
+    "   ███  █   █  ███  █████  ███  █████\n"
+)
+
+
+def print_banner() -> None:
+    print(BANNER)
+    print("  unglue any track. peel. done.")
+    print("  vocals / instrumental — powered by demucs\n")
 
 
 def check_tool(name: str) -> bool:
@@ -105,6 +120,7 @@ def remux_instrumental(video_path: Path, instrumental_path: Path, out_path: Path
 
 
 def main() -> None:
+    print_banner()
     parser = argparse.ArgumentParser(description="Split vocals from instrumental using Demucs.")
     parser.add_argument("input", type=Path, help="audio or video file to process")
     parser.add_argument("-o", "--output", type=Path, default=Path.cwd(), help="output directory (default: cwd)")
