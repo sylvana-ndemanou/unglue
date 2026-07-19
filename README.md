@@ -1,89 +1,66 @@
-# yoinks / unglue
-
-> Based on [yoinks](https://github.com/pablostanley/yoinks) by Pablo Stanley, extended with `unglue` (vocal/instrumental separation via Demucs).
+# unglue
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-  <img src="assets/logo-light.svg" alt="yoinks" width="288">
+  <img src="assets/logo-light.svg" alt="unglue" width="288">
 </picture>
 
-yoink any video. paste. yoink. done.
+unglue any track. peel. done.
 
-Download videos from YouTube, X/Twitter, Instagram, Threads, TikTok and
-1,800+ other sites — right from your terminal. Paste a url, pick a
-resolution (or audio-only mp3), done. No popups, no fake download buttons,
-no sketchy redirects.
+Pull the vocals off a song or video, right from your terminal — local,
+no upload, no cloud processing. Powered by
+[Demucs](https://github.com/facebookresearch/demucs) (Meta AI Research),
+currently the strongest open-source separation model available. Works on a
+full track or just a clip (`1:10-1:50`), on audio or video files.
 
-<img src="assets/home.png" alt="yoinks home screen — paste a link and hit yoink" width="100%">
+Built on top of [`yoinks`](https://github.com/pablostanley/yoinks) — the
+terminal video downloader this repo started as a fork of — so you can go
+from a YouTube link straight to isolated vocals in one session.
 
 ## Install
-
-```sh
-npm install -g yoinks
-```
-
-Or try it without installing anything:
-
-```sh
-npx yoinks
-```
-
-Requires Node 18+. Everything else (yt-dlp, ffmpeg) is fetched or bundled
-automatically.
-
-## Usage
-
-```sh
-$ yoinks https://youtu.be/dQw4w9WgXcQ    # straight to the format picker
-$ yoinks                                 # prompts for a url
-$ yoinks --theme light                   # force the light palette
-```
-
-yoinks takes over the terminal (full-screen, centered — and restores your
-scrollback on exit). Pick a format with ↑/↓ (or j/k, or number keys) and
-hit enter. `esc` goes back, `^c` quits. Or just use the mouse — the yoink
-button, the format list and the footer hints are all clickable, and
-clicking the logo takes you back home. Files are saved to `~/Downloads`,
-and the file path is printed to your terminal when you're done.
-
-The default `auto` theme uses your terminal's own foreground and background,
-so it follows light and dark terminal themes without guessing. Press `^t` or
-click the theme control in the footer to cycle through `auto`, `light`, and
-`dark` for the current session. Use `--theme auto`, `--theme light`, or
-`--theme dark` to choose the starting theme for one launch.
-
-<img src="assets/download-options.png" alt="yoinks format picker — resolutions with estimated file sizes, plus audio-only mp3" width="100%">
-
-## How it works
-
-- Powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp). On first run,
-  yoinks downloads the standalone yt-dlp binary to `~/.yoinks/bin` —
-  no Python required. If you already have yt-dlp installed, it uses yours.
-- ffmpeg (needed for merging high-res streams and mp3 extraction) is found
-  on your PATH, with `ffmpeg-static` as a bundled fallback.
-- The UI is [Ink](https://github.com/vadimdemedes/ink) — React for the
-  terminal.
-
-## Companion tool: unglue
-
-[`tools/unglue/`](tools/unglue/README.md) is a standalone vocal/instrumental
-separator powered by [Demucs](https://github.com/facebookresearch/demucs)
-(Meta AI Research). Once you've yoinked a track, unglue peels the vocals off it.
 
 ```sh
 cd tools/unglue
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt   # first install pulls PyTorch, ~1-2GB
 ```
+
+You also need `ffmpeg` on your PATH (used for extraction, clip trimming, and
+mp3 encoding).
+
+## Usage
 
 ```sh
-python3 unglue.py song.mp3           # → song_vocals.mp3 + song_instrumental.mp3
-python3 unglue.py clip.mp4 --remux   # → same, plus clip_instrumental.mp4
+python3 unglue.py song.mp3                    # → song_vocals.mp3 + song_instrumental.mp3
+python3 unglue.py clip.mp4 --remux             # → same, plus clip_instrumental.mp4
+python3 unglue.py song.mp3 --start 1:10 --end 1:50   # only that window
+python3 unglue.py song.mp3 --model htdemucs_ft # slower, slightly cleaner separation
 ```
 
-See [`tools/unglue/README.md`](tools/unglue/README.md) for all options and
-performance notes (Apple Silicon MPS, CUDA, model choices).
+See [`tools/unglue/README.md`](tools/unglue/README.md) for the full flag
+reference and performance notes (Apple Silicon MPS, CUDA, model choices).
+
+## Downloading with yoinks first
+
+To grab a track from YouTube, X, Instagram, and 1,800+ other sites before
+unglueing it:
+
+```sh
+npm install -g yoinks
+yoinks https://youtu.be/dQw4w9WgXcQ
+```
+
+`yoinks` runs as a full-screen terminal picker — paste a link, choose a
+resolution or audio-only mp3, and once the download finishes, press `u` to
+unglue it right there in the same session (the picker screen swaps to the
+unglue wordmark and walks you through an optional clip range before
+separating).
+
+<img src="assets/download-options.png" alt="yoinks format picker — resolutions with estimated file sizes, plus audio-only mp3" width="100%">
+
+See the full [yoinks usage and options](https://github.com/pablostanley/yoinks#readme)
+upstream, or `src/app.tsx` in this repo for the unglue-specific picker steps.
 
 ## Development
 
@@ -100,21 +77,25 @@ To try it as a global command without publishing: `npm link`, then run
 
 ## Roadmap
 
+- [x] Vocal/instrumental separation via Demucs (`tools/unglue`)
+- [x] Wire unglue into the yoinks picker as a post-download option
+- [x] Clip range support (`--start`/`--end`)
 - [ ] `--best` / `--mp3` flags to skip the picker (scriptable mode)
 - [ ] `-o <dir>` to choose the output folder
 - [ ] Playlist / thread-with-multiple-videos support
 - [ ] Clipboard detection: launch bare and auto-suggest the url you copied
 - [ ] Self-update for the bundled yt-dlp binary (`yt-dlp -U`)
-- [x] Publish to npm (`npm i -g yoinks` / `npx yoinks`)
-- [ ] `curl yoinks.sh | sh` installer
-- [ ] Wire unglue (vocals/instrumental split) into the picker as a post-download option
 
 ## A note on fair use
 
-yoinks is a personal-archiving tool. Downloading content may violate a
-platform's terms of service — only download what you have the right to
-keep, and be excellent to creators.
+unglue and yoinks are personal-archiving tools. Downloading or remixing
+content may violate a platform's terms of service or infringe copyright
+depending on what you do with the result — only process what you have the
+right to, and be excellent to creators.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — this repo started as a fork of
+[yoinks](https://github.com/pablostanley/yoinks) by Pablo Stanley; the
+original copyright notice is preserved in `LICENSE` as required by the MIT
+license.
