@@ -104,7 +104,7 @@ type Phase =
   | {name: 'done'; filepath: string}
   | {name: 'unglue-range'; filepath: string}
   | {name: 'unglue-checking'; filepath: string}
-  | {name: 'unglueing'; filepath: string; lines: string[]}
+  | {name: 'unglueing'; filepath: string; pct: number}
   | {name: 'unglue-done'; result: UnglueResult}
   | {name: 'unglue-error'; filepath: string; message: string}
   | {name: 'error'; message: string}
@@ -289,15 +289,18 @@ function AppContent({
     try {
       const python = await ensureUngluePython()
       if (controller.signal.aborted) return
-      setPhase({name: 'unglueing', filepath, lines: []})
+      setPhase({name: 'unglueing', filepath, pct: 0})
       const result = await unglueTrack(
         python,
         {inputPath: filepath, outDir: path.dirname(filepath), start: range?.start, end: range?.end},
         {
-          onLine: line =>
-            setPhase(prev =>
-              prev.name === 'unglueing' ? {...prev, lines: [...prev.lines.slice(-4), line]} : prev,
-            ),
+          onLine: line => {
+            const m = line.match(/^\s*(\d+)%/)
+            if (m) {
+              const pct = parseInt(m[1], 10)
+              setPhase(prev => prev.name === 'unglueing' ? {...prev, pct} : prev)
+            }
+          },
         },
         controller.signal,
       )
@@ -634,18 +637,24 @@ function AppContent({
 
       {phase.name === 'unglueing' && (
         <Box flexDirection="column" alignItems="center" width={Math.max(10, Math.min(columns - 6, 72))}>
-          <Text>
-            <Text color={theme.primary}>
-              <Spinner type="dots" />
-            </Text>
-            <Text color={theme.gray} dimColor={theme.dimSecondary}> unglueing vocals from instrumental…</Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>
+            {phase.pct > 0
+              ? truncate(path.basename(phase.filepath), columns - 10)
+              : ' '}
           </Text>
           <Gap />
-          {phase.lines.map((line, index) => (
-            <Text key={index} color={theme.gray} dimColor>
-              {truncate(line, columns - 10)}
+          {phase.pct > 0 ? (
+            <>
+              <ProgressBar percent={phase.pct / 100} />
+              <Gap />
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>{phase.pct}%</Text>
+            </>
+          ) : (
+            <Text>
+              <Text color={theme.primary}><Spinner type="dots" /></Text>
+              <Text color={theme.gray} dimColor={theme.dimSecondary}> unglueing vocals from instrumental…</Text>
             </Text>
-          ))}
+          )}
         </Box>
       )}
 
