@@ -62,6 +62,27 @@ click the theme control in the footer to cycle through `auto`, `light`, and
 - The UI is [Ink](https://github.com/vadimdemedes/ink) — React for the
   terminal.
 
+## Companion tool: unglue
+
+[`tools/unglue/`](tools/unglue/README.md) is a standalone vocal/instrumental
+separator powered by [Demucs](https://github.com/facebookresearch/demucs)
+(Meta AI Research). Once you've yoinked a track, unglue peels the vocals off it.
+
+```sh
+cd tools/unglue
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+```sh
+python3 unglue.py song.mp3           # → song_vocals.mp3 + song_instrumental.mp3
+python3 unglue.py clip.mp4 --remux   # → same, plus clip_instrumental.mp4
+```
+
+See [`tools/unglue/README.md`](tools/unglue/README.md) for all options and
+performance notes (Apple Silicon MPS, CUDA, model choices).
+
 ## Development
 
 ```sh
@@ -84,6 +105,7 @@ To try it as a global command without publishing: `npm link`, then run
 - [ ] Self-update for the bundled yt-dlp binary (`yt-dlp -U`)
 - [x] Publish to npm (`npm i -g yoinks` / `npx yoinks`)
 - [ ] `curl yoinks.sh | sh` installer
+- [ ] Wire unglue (vocals/instrumental split) into the picker as a post-download option
 
 ## A note on fair use
 
