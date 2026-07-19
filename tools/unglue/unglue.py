@@ -11,10 +11,11 @@ Usage:
     python3 unglue.py video.mp4 --remux            # also rebuild a video with the instrumental as its audio track
     python3 unglue.py song.wav --model htdemucs_ft  # slower, slightly cleaner separation
     python3 unglue.py song.mp3 --format wav         # keep lossless output instead of mp3
+    python3 unglue.py song.mp3 --start 1:10 --end 1:50   # only unglue that clip
 
 Requires:
     pip install -U demucs
-    ffmpeg on PATH (used for video audio extraction/remux and mp3 encoding)
+    ffmpeg on PATH (used for video audio extraction/remux, clip trimming, and mp3 encoding)
 
 Source for the flags used below: facebookresearch/demucs README
 (https://github.com/facebookresearch/demucs) — --two-stems=vocals for the
@@ -46,6 +47,19 @@ def print_banner() -> None:
     print("  vocals / instrumental — powered by demucs\n")
 
 
+def parse_timestamp(value: str) -> float:
+    """Parse 'SS', 'MM:SS', or 'HH:MM:SS' into seconds."""
+    parts = value.strip().split(":")
+    try:
+        numbers = [float(p) for p in parts]
+    except ValueError as error:
+        raise ValueError(f"'{value}' isn't a valid timestamp (use SS, MM:SS, or HH:MM:SS)") from error
+    seconds = 0.0
+    for n in numbers:
+        seconds = seconds * 60 + n
+    return seconds
+
+
 def check_tool(name: str) -> bool:
     return shutil.which(name) is not None
 
@@ -64,18 +78,43 @@ def detect_device() -> str:
     return "cpu"
 
 
-def extract_audio(video_path: Path, workdir: Path) -> Path:
-    """Pull the audio track out of a video file as a wav Demucs can ingest."""
-    audio_path = workdir / f"{video_path.stem}.wav"
-    cmd = [
-        "ffmpeg", "-y", "-i", str(video_path),
-        "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
-        str(audio_path),
-    ]
+def extract_audio(source_path: Path, workdir: Path, start: float | None, end: float | None) -> Path:
+    """Pull/trim audio into a wav Demucs can ingest. Works for audio or video input.
+
+    Runs through ffmpeg unconditionally when a range is requested (even for
+    plain audio files), since that's the simplest way to trim any container.
+    """
+    audio_path = workdir / f"{source_path.stem}.wav"
+    cmd = ["ffmpeg", "-y"]
+    if start is not None:
+        cmd += ["-ss", str(start)]
+    cmd += ["-i", str(source_path)]
+    if end is not None:
+        duration = end - (start or 0)
+        if duration <= 0:
+            raise ValueError("--end must come after --start")
+        cmd += ["-t", str(duration)]
+    cmd += ["-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", str(audio_path)]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg couldn't extract audio:\n{result.stderr.strip()[-500:]}")
     return audio_path
+
+
+def trim_video(video_path: Path, out_path: Path, start: float | None, end: float | None) -> Path:
+    """Cut the video itself to the same window, so a --remux output lines up with the trimmed audio."""
+    cmd = ["ffmpeg", "-y"]
+    if start is not None:
+        cmd += ["-ss", str(start)]
+    cmd += ["-i", str(video_path)]
+    if end is not None:
+        duration = end - (start or 0)
+        cmd += ["-t", str(duration)]
+    cmd += ["-c", "copy", str(out_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg couldn't trim the video:\n{result.stderr.strip()[-500:]}")
+    return out_path
 
 
 def run_demucs(input_path: Path, out_dir: Path, model: str, fmt: str, device: str) -> Path:
@@ -104,7 +143,7 @@ def run_demucs(input_path: Path, out_dir: Path, model: str, fmt: str, device: st
 
 
 def remux_instrumental(video_path: Path, instrumental_path: Path, out_path: Path) -> None:
-    """Rebuild the original video with the instrumental track as its audio."""
+    """Rebuild a video (already trimmed to match, if a range was requested) with the instrumental track as its audio."""
     cmd = [
         "ffmpeg", "-y",
         "-i", str(video_path),
@@ -129,6 +168,8 @@ def main() -> None:
     parser.add_argument("-f", "--format", choices=["mp3", "wav"], default="mp3", help="output audio format")
     parser.add_argument("--remux", action="store_true",
                          help="if the input is a video, also produce a copy of it with the instrumental as audio")
+    parser.add_argument("--start", type=str, default=None, help="clip start, e.g. 1:10 (default: beginning)")
+    parser.add_argument("--end", type=str, default=None, help="clip end, e.g. 1:50 (default: end of file)")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda", "mps"], default="auto")
     args = parser.parse_args()
 
@@ -142,13 +183,25 @@ def main() -> None:
     except ImportError:
         sys.exit("error: demucs not installed — run `pip install -U demucs` first")
 
+    start = parse_timestamp(args.start) if args.start else None
+    end = parse_timestamp(args.end) if args.end else None
+    if start is not None and end is not None and end <= start:
+        sys.exit("error: --end must come after --start")
+
     device = detect_device() if args.device == "auto" else args.device
     args.output.mkdir(parents=True, exist_ok=True)
 
     is_video = args.input.suffix.lower() in VIDEO_EXTENSIONS
+    clipped = start is not None or end is not None
+    suffix = "_clip" if clipped else ""
+
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
-        audio_input = extract_audio(args.input, tmp_dir) if is_video else args.input
+        # trim/extract unconditionally when a range is given, even for a
+        # plain audio file — otherwise pass audio straight through untouched
+        audio_input = (
+            extract_audio(args.input, tmp_dir, start, end) if (is_video or clipped) else args.input
+        )
 
         track_dir = run_demucs(audio_input, tmp_dir / "demucs_out", args.model, args.format, device)
         ext = "mp3" if args.format == "mp3" else "wav"
@@ -156,8 +209,8 @@ def main() -> None:
         vocals_src = track_dir / f"vocals.{ext}"
         instrumental_src = track_dir / f"no_vocals.{ext}"
 
-        vocals_dst = args.output / f"{args.input.stem}_vocals.{ext}"
-        instrumental_dst = args.output / f"{args.input.stem}_instrumental.{ext}"
+        vocals_dst = args.output / f"{args.input.stem}{suffix}_vocals.{ext}"
+        instrumental_dst = args.output / f"{args.input.stem}{suffix}_instrumental.{ext}"
         shutil.copy(vocals_src, vocals_dst)
         shutil.copy(instrumental_src, instrumental_dst)
 
@@ -165,8 +218,12 @@ def main() -> None:
         print(f"✓ instrumental: {instrumental_dst}")
 
         if is_video and args.remux:
-            video_out = args.output / f"{args.input.stem}_instrumental{args.input.suffix}"
-            remux_instrumental(args.input, instrumental_dst, video_out)
+            video_out = args.output / f"{args.input.stem}{suffix}_instrumental{args.input.suffix}"
+            source_video = args.input
+            if clipped:
+                # cut the video to the same window so it lines up with the trimmed audio
+                source_video = trim_video(args.input, tmp_dir / f"video_clip{args.input.suffix}", start, end)
+            remux_instrumental(source_video, instrumental_dst, video_out)
             print(f"✓ video (instrumental audio): {video_out}")
 
 

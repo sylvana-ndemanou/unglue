@@ -35,6 +35,9 @@ export type UnglueOptions = {
   format?: 'mp3' | 'wav'
   model?: 'htdemucs' | 'htdemucs_ft' | 'mdx_extra'
   remux?: boolean
+  /** clip window, e.g. "1:10" — omit either for the start/end of the file */
+  start?: string
+  end?: string
 }
 
 function commandWorks(cmd: string, args: string[]): Promise<boolean> {
@@ -90,6 +93,8 @@ export function unglueTrack(
     opts.model ?? 'htdemucs',
   ]
   if (opts.remux) args.push('--remux')
+  if (opts.start) args.push('--start', opts.start)
+  if (opts.end) args.push('--end', opts.end)
 
   return new Promise((resolve, reject) => {
     const child = spawn(python, args, {signal})
@@ -115,11 +120,14 @@ export function unglueTrack(
       }
       const ext = opts.format ?? 'mp3'
       const stem = path.basename(opts.inputPath, path.extname(opts.inputPath))
+      // unglue.py appends _clip when a start/end range was requested, even
+      // for a plain audio file, to keep clipped output distinguishable
+      const suffix = opts.start || opts.end ? '_clip' : ''
       resolve({
-        vocalsPath: path.join(opts.outDir, `${stem}_vocals.${ext}`),
-        instrumentalPath: path.join(opts.outDir, `${stem}_instrumental.${ext}`),
+        vocalsPath: path.join(opts.outDir, `${stem}${suffix}_vocals.${ext}`),
+        instrumentalPath: path.join(opts.outDir, `${stem}${suffix}_instrumental.${ext}`),
         videoPath: opts.remux
-          ? path.join(opts.outDir, `${stem}_instrumental${path.extname(opts.inputPath)}`)
+          ? path.join(opts.outDir, `${stem}${suffix}_instrumental${path.extname(opts.inputPath)}`)
           : undefined,
       })
     })

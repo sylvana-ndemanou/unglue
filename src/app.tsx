@@ -34,6 +34,9 @@ const YOINK_BUTTON = 'yoink'
 const DONE_LABEL = '↵ yoink another'
 const UNGLUE_LABEL = '♪ u unglue vocals'
 const TAGLINE = 'yoink any video. paste. yoink. done.'
+const TAGLINE_UNGLUE = 'unglue any track. peel. done.'
+const SUBLINE = 'youtube · x · instagram · threads · tiktok · +1800 more'
+const SUBLINE_UNGLUE = 'vocals / instrumental — powered by demucs'
 
 const choiceLabel = (choice: DownloadChoice) => `${choice.kind === 'audio' ? '♪ ' : '▶ '}${choice.label}`
 
@@ -99,6 +102,7 @@ type Phase =
       refreshing?: boolean
     }
   | {name: 'done'; filepath: string}
+  | {name: 'unglue-range'; filepath: string}
   | {name: 'unglue-checking'; filepath: string}
   | {name: 'unglueing'; filepath: string; lines: string[]}
   | {name: 'unglue-done'; result: UnglueResult}
@@ -126,6 +130,11 @@ const HINTS: Record<Phase['name'], Array<[string, string]>> = {
   ],
   done: [
     ['u', 'unglue vocals'],
+    ['^c', 'quit'],
+  ],
+  'unglue-range': [
+    ['↵', 'unglue'],
+    ['esc', 'back'],
     ['^c', 'quit'],
   ],
   'unglue-checking': [['^c', 'quit']],
@@ -180,6 +189,7 @@ function AppContent({
   const {stdout} = useStdout()
   const [url, setUrl] = useState(initialUrl ?? '')
   const [urlInput, setUrlInput] = useState('')
+  const [rangeInput, setRangeInput] = useState('')
   const [history, setHistory] = useState(loadHistory)
   const [platform, setPlatform] = useState<Platform>()
   const [info, setInfo] = useState<VideoInfo>()
@@ -245,12 +255,14 @@ function AppContent({
         return
       }
       if (input === 'u' && phase.name === 'done') {
-        void handleUnglue(phase.filepath)
+        setRangeInput('')
+        setPhase({name: 'unglue-range', filepath: phase.filepath})
         return
       }
       if (key.escape && (phase.name === 'picking' || phase.name === 'error' || phase.name === 'done')) resetToInput()
       if (key.escape && (phase.name === 'probing' || phase.name === 'downloading')) cancelRun()
       if (key.escape && phase.name === 'unglueing') cancelRun()
+      if (key.escape && phase.name === 'unglue-range') setPhase({name: 'done', filepath: phase.filepath})
       if (key.return && (phase.name === 'error' || phase.name === 'done')) resetToInput()
       if (key.return && phase.name === 'unglue-error') setPhase({name: 'done', filepath: phase.filepath})
     },
@@ -270,7 +282,7 @@ function AppContent({
   const clipboardOffered = Boolean(clipboardUrl) && urlInput === ''
   const clipboardAccepted = Boolean(clipboardUrl) && urlInput === clipboardUrl
 
-  const handleUnglue = async (filepath: string) => {
+  const handleUnglue = async (filepath: string, range?: {start?: string; end?: string}) => {
     const controller = new AbortController()
     abortRef.current = controller
     setPhase({name: 'unglue-checking', filepath})
@@ -280,7 +292,7 @@ function AppContent({
       setPhase({name: 'unglueing', filepath, lines: []})
       const result = await unglueTrack(
         python,
-        {inputPath: filepath, outDir: path.dirname(filepath)},
+        {inputPath: filepath, outDir: path.dirname(filepath), start: range?.start, end: range?.end},
         {
           onLine: line =>
             setPhase(prev =>
@@ -295,6 +307,19 @@ function AppContent({
       if (controller.signal.aborted) return
       setPhase({name: 'unglue-error', filepath, message: error instanceof Error ? error.message : String(error)})
     }
+  }
+
+  // "1:10-1:50" -> {start, end}; "1:10-" -> {start}; "-1:50" -> {end}; "" -> {} (full track)
+  const handleRangeSubmit = (filepath: string, value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      void handleUnglue(filepath)
+      return
+    }
+    const [rawStart, rawEnd] = trimmed.includes('-') ? trimmed.split(/-(?!.*-)/, 2) : [trimmed, undefined]
+    const start = rawStart?.trim() || undefined
+    const end = rawEnd?.trim() || undefined
+    void handleUnglue(filepath, {start, end})
   }
 
   const handlePick = (item: {value: number}) => {
@@ -347,13 +372,19 @@ function AppContent({
     if (key === '^t') return cycleTheme
     if (key === 'esc') {
       if (phase.name === 'probing' || phase.name === 'downloading' || phase.name === 'unglueing') return cancelRun
+      if (phase.name === 'unglue-range') return () => setPhase({name: 'done', filepath: phase.filepath})
       return resetToInput
     }
-    if (key === 'u' && phase.name === 'done') return () => void handleUnglue(phase.filepath)
+    if (key === 'u' && phase.name === 'done')
+      return () => {
+        setRangeInput('')
+        setPhase({name: 'unglue-range', filepath: phase.filepath})
+      }
     if (key === '↵') {
       if (phase.name === 'input') return () => handleUrlSubmit(urlInput)
       if (phase.name === 'picking') return () => handlePick({value: highlightRef.current})
       if (phase.name === 'error' || phase.name === 'done') return resetToInput
+      if (phase.name === 'unglue-range') return () => handleRangeSubmit(phase.filepath, rangeInput)
       if (phase.name === 'unglue-error') return () => setPhase({name: 'done', filepath: phase.filepath})
     }
     return undefined // ↑↓ / ↑ stay keyboard-only
@@ -370,7 +401,15 @@ function AppContent({
   }
   if (phase.name === 'done') {
     clickTargets.push({match: DONE_LABEL, padX: 4, padY: 1, action: resetToInput})
-    clickTargets.push({match: UNGLUE_LABEL, padX: 4, padY: 1, action: () => void handleUnglue(phase.filepath)})
+    clickTargets.push({
+      match: UNGLUE_LABEL,
+      padX: 4,
+      padY: 1,
+      action: () => {
+        setRangeInput('')
+        setPhase({name: 'unglue-range', filepath: phase.filepath})
+      },
+    })
   }
   for (const [key, label] of hints) {
     const action = hintAction(key)
@@ -394,12 +433,19 @@ function AppContent({
     Boolean(process.stdin.isTTY),
   )
 
+  const isUnglueScreen =
+    phase.name === 'unglue-range' ||
+    phase.name === 'unglue-checking' ||
+    phase.name === 'unglueing' ||
+    phase.name === 'unglue-done' ||
+    phase.name === 'unglue-error'
+
   return (
     <FullScreen>
-      <Logo variant={phase.name === 'unglue-checking' || phase.name === 'unglueing' || phase.name === 'unglue-done' || phase.name === 'unglue-error' ? 'unglue' : 'yoinks'} />
+      <Logo variant={isUnglueScreen ? 'unglue' : 'yoinks'} />
       <Gap />
-      <Text color={theme.primary}>{TAGLINE}</Text>
-      <Text color={theme.gray} dimColor={theme.dimSecondary}>youtube · x · instagram · threads · tiktok · +1800 more</Text>
+      <Text color={theme.primary}>{isUnglueScreen ? TAGLINE_UNGLUE : TAGLINE}</Text>
+      <Text color={theme.gray} dimColor={theme.dimSecondary}>{isUnglueScreen ? SUBLINE_UNGLUE : SUBLINE}</Text>
       <Gap />
 
       {phase.name === 'input' && (
@@ -551,6 +597,27 @@ function AppContent({
               <Text bold color={theme.primary}>{UNGLUE_LABEL}</Text>
             </Box>
           </Box>
+        </Box>
+      )}
+
+      {phase.name === 'unglue-range' && (
+        <Box flexDirection="column" alignItems="center" width={Math.max(10, Math.min(columns - 6, 72))}>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>
+            pulls the vocals off this track using Demucs, a local AI model — first run
+          </Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>
+            downloads ~100MB of model weights. works on the full track or just a clip.
+          </Text>
+          <Gap />
+          <FramedInput title="Clip range (optional)" width={boxWidth} button="unglue">
+            <TextInput
+              value={rangeInput}
+              onChange={setRangeInput}
+              onSubmit={value => handleRangeSubmit(phase.filepath, value)}
+              placeholder="1:10-1:50 — blank for the full track"
+              width={boxWidth - 6}
+            />
+          </FramedInput>
         </Box>
       )}
 
