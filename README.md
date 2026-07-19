@@ -1,10 +1,5 @@
 # unglue
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-  <img src="assets/logo-light.svg" alt="unglue" width="288">
-</picture>
-
 unglue any track. peel. done.
 
 Pull the vocals off a song or video, right from your terminal — local,
