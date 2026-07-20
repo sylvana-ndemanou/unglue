@@ -7,6 +7,11 @@
 
 unglue any track. peel. done.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/unglue-range-dark.png">
+  <img src="assets/unglue-range.png" alt="unglue clip range picker — UNGLUE wordmark with optional clip range input" width="100%">
+</picture>
+
 Pull the vocals off a song or video, right from your terminal — local,
 no upload, no cloud processing. Powered by
 [Demucs](https://github.com/facebookresearch/demucs) (Meta AI Research),
